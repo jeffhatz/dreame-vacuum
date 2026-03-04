@@ -677,10 +677,10 @@
       "low_water_warning": {
         "state": {
           "no_warning": "Geen waarschuwing",
-          "no_water_left_dismiss": "Controleer de schoon watertank.",
-          "no_water_left": "Het water in de schoon watertank is bijna op. Controleer en vul de schoon watertank tijdig.",
-          "no_water_left_after_clean": "De dweil is gereinigd. Geconstateerd dat het water in de schoon watertank onvoldoende is, vul de schoon watertank en leeg de vuilwatertank.",
-          "no_water_for_clean": "Laag waterniveau in de schoon watertank. De robot is overgeschakeld naar stofzuigmodus.",
+          "no_water_left_dismiss": "Controleer de schoonwatertank.",
+          "no_water_left": "Het water in de schoonwatertank is bijna op. Controleer en vul de schoonwatertank tijdig.",
+          "no_water_left_after_clean": "De dweil is gereinigd. Geconstateerd dat het water in de schoonwatertank onvoldoende is, vul de schoonwatertank en leeg de vuilwatertank.",
+          "no_water_for_clean": "Laag waterniveau in de schoonwatertank. De robot is overgeschakeld naar stofzuigmodus.",
           "low_water": "Bijna geen water meer. Vul de schoonwatertank.",
           "tank_not_installed": "De schoonwatertank is niet geïnstalleerd."
         }
@@ -774,7 +774,7 @@
           "stain_cleaning": "Vlekkenreiniging",
           "initial_deep_cleaning": "Initiële diepe reiniging",
           "initial_deep_cleaning_paused": "Initiële diepe reiniging gepauzeerd",
-          "mop_pad_heating": "Dweil verwarming",
+          "mop_pad_heating": "Dweil verwarmen",
           "cleaning_after_mapping": "Reiniging na mapping",
           "small_particle_cleaning": "Reiniging kleine deeltjes",
           "changing_mop": "Dweil vervangen",
@@ -795,11 +795,11 @@
   },
   "services": {
     "vacuum_clean_segment": {
-      "name": "Segment Schoonmaken",
+      "name": "Ruimte Schoonmaken",
       "description": "Start de schoonmaakoperatie in de geselecteerde kamers.",
       "fields": {
         "segments": {
-          "name": "Segmenten",
+          "name": "Ruimte",
           "description": "Lijst van kamers die schoongemaakt moeten worden. Alleen het karakter van de kamer of een array van kamers karakter, schoonmaaktijden, ventilatorsnelheid en dweilmodus om de standaardwaarden per kamer te overschrijven."
         },
         "repeats": {
@@ -818,7 +818,7 @@
     },
     "vacuum_clean_zone": {
       "name": "Zone Schoonmaken",
-      "description": "Start de schoonmaakoperatie in het geselecteerde gebied.",
+      "description": "Start de schoonmaakoperatie in de geselecteerde zone.",
       "fields": {
         "zone": {
           "name": "Zone",
@@ -1116,7 +1116,7 @@
         },
         "type": {
           "name": "Type object",
-          "description": "Type van het object met de ID. (0 = Automatisch gedetecteerd tapijt, 1 = Handmatig gemaakt tapijt, 2 = Kamer tapijt (indien ondersteund))"
+          "description": "Type van het object met de ID. (0 = Automatisch gedetecteerd tapijt, 1 = Handmatig gecreëerd tapijt, 2 = Kamer tapijt (indien ondersteund))"
         },
         "carpet_cleaning": {
           "name": "Tapijtreiniging",
