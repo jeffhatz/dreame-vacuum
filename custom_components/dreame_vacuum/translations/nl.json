@@ -1,7 +1,7 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Apparaat is al geconfigureerd",
+      "already_configured": "Dit apparaat is al geconfigureerd",
       "cannot_connect": "Verbinding mislukt.",
       "reauth_successful": "De herauthenticatie is geslaagd"
     },
