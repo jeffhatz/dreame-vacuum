@@ -44,6 +44,9 @@ from .const import (
     CONF_SQUARE,
     CONF_DONATED,
     CONF_VERSION,
+    CONF_MODEL,
+    CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE,
+    MOVA_P10_PRO_ULTRA_MODEL,
     NOTIFICATION,
     MAP_OBJECTS,
     SPONSOR,
@@ -125,6 +128,15 @@ class DreameVacuumOptionsFlowHandler(OptionsFlow):
                     ): bool
                 }
             )
+
+        data_schema = data_schema.extend(
+            {
+                vol.Required(
+                    CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE,
+                    default=self._config_entry.options.get(CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE, True),
+                ): bool
+            }
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -570,6 +582,7 @@ class DreameVacuumFlowHandler(ConfigFlow, domain=DOMAIN):
                 CONF_SQUARE: user_input.get(CONF_SQUARE),
                 CONF_LOW_RESOLUTION: user_input.get(CONF_LOW_RESOLUTION),
                 CONF_PREFER_CLOUD: self.prefer_cloud,
+                CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE: self.model == MOVA_P10_PRO_ULTRA_MODEL,
             }
 
             return await self.async_step_donation()
@@ -628,6 +641,7 @@ class DreameVacuumFlowHandler(ConfigFlow, domain=DOMAIN):
                     CONF_DID: self.device_id,
                     CONF_AUTH_KEY: self.protocol.cloud.auth_key if self.protocol and self.protocol.cloud else None,
                     CONF_ACCOUNT_TYPE: self.account_type,
+                    CONF_MODEL: self.model,
                 },
                 options=self.options,
             )

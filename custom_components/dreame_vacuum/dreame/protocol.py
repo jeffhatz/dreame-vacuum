@@ -20,6 +20,11 @@ from urllib.parse import urlparse, parse_qs
 import re
 
 from .exceptions import DeviceException
+from .types import (
+    DID,
+    DreameVacuumActionMapping,
+    DreameVacuumPropertyMapping,
+)
 
 from . import VERSION
 
@@ -34,6 +39,56 @@ DREAME_STRINGS: Final = (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _property_name(siid: int | None, piid: int | None) -> str | None:
+    for prop, mapping in DreameVacuumPropertyMapping.items():
+        if mapping.get("siid") == siid and mapping.get("piid") == piid:
+            return prop.name
+    prop = DID(siid, piid) if siid is not None and piid is not None else None
+    return prop.name if prop else None
+
+
+def _action_name(siid: int | None, aiid: int | None) -> str | None:
+    for action, mapping in DreameVacuumActionMapping.items():
+        if mapping.get("siid") == siid and mapping.get("aiid") == aiid:
+            return action.name
+    return None
+
+
+def _describe_miot_payload(method: str, parameters: Any = None) -> Any:
+    if parameters is None:
+        return None
+
+    if method == "get_properties" and isinstance(parameters, list):
+        return [
+            {
+                **param,
+                "property": _property_name(param.get("siid"), param.get("piid")),
+            }
+            if isinstance(param, dict)
+            else param
+            for param in parameters
+        ]
+
+    if method == "set_properties" and isinstance(parameters, list):
+        return [
+            {
+                **param,
+                "property": _property_name(param.get("siid"), param.get("piid")),
+            }
+            if isinstance(param, dict)
+            else param
+            for param in parameters
+        ]
+
+    if method == "action" and isinstance(parameters, dict):
+        return {
+            **parameters,
+            "action": _action_name(parameters.get("siid"), parameters.get("aiid")),
+        }
+
+    return parameters
 
 
 class DreameVacuumDeviceProtocol(MiIOProtocol):
@@ -548,6 +603,11 @@ class DreameVacuumDreameHomeCloudProtocol:
         )
 
     def send(self, method, parameters, retry_count: int = 2, timeout=None) -> Any:
+        _LOGGER.debug(
+            "DreameHome cloud RPC request: method=%s params=%s",
+            method,
+            _describe_miot_payload(method, parameters),
+        )
         host = ""
         if self._host and len(self._host):
             host = f"-{self._host.split('.')[0]}"
@@ -580,7 +640,9 @@ class DreameVacuumDreameHomeCloudProtocol:
                     return self.send(method, parameters, 0)
                 _LOGGER.warning("Failed to execute api call: %s", api_response)
             return None
-        return api_response["data"]["result"]
+        result = api_response["data"]["result"]
+        _LOGGER.debug("DreameHome cloud RPC response: method=%s response=%s", method, result)
+        return result
 
     def get_device_file(self, file_name, file_type) -> Any:
         try:
@@ -666,11 +728,13 @@ class DreameVacuumDreameHomeCloudProtocol:
         return api_response["data"]
 
     def get_properties(self, keys):
+        _LOGGER.debug("DreameHome cloud get_properties request: keys=%s", keys)
         params = {"did": str(self._did), "keys": keys}
         api_response = self._api_call(f"{self._strings[23]}/{self._strings[25]}/{self._strings[41]}", params)
         if api_response is None or "data" not in api_response:
             return None
 
+        _LOGGER.debug("DreameHome cloud get_properties response: response=%s", api_response["data"])
         return api_response["data"]
 
     def get_device_property(self, key, limit=1, time_start=0, time_end=9999999999):
@@ -697,19 +761,24 @@ class DreameVacuumDreameHomeCloudProtocol:
             param_name = "aiid"
 
         params[param_name] = data_keys[1]
+        _LOGGER.debug("DreameHome cloud device data request: type=%s key=%s params=%s", type, key, params)
         api_response = self._api_call(f"{self._strings[23]}/{self._strings[25]}/{self._strings[43]}", params)
         if api_response is None or "data" not in api_response or self._strings[33] not in api_response["data"]:
             return None
 
-        return api_response["data"][self._strings[33]]
+        result = api_response["data"][self._strings[33]]
+        _LOGGER.debug("DreameHome cloud device data response: type=%s key=%s response=%s", type, key, result)
+        return result
 
     def get_batch_device_datas(self, props) -> Any:
+        _LOGGER.debug("DreameHome cloud batch device data request: props=%s", props)
         api_response = self._api_call(
             f"{self._strings[23]}/{self._strings[26]}/{self._strings[44]}",
             {"did": self._did, self._strings[35]: props},
         )
         if api_response is None or "data" not in api_response:
             return None
+        _LOGGER.debug("DreameHome cloud batch device data response: response=%s", api_response["data"])
         return api_response["data"]
 
     def set_batch_device_datas(self, props) -> Any:
@@ -722,6 +791,7 @@ class DreameVacuumDreameHomeCloudProtocol:
         return api_response["result"]
 
     def request(self, url: str, data, retry_count=2, timeout=None) -> Any:
+        _LOGGER.debug("DreameHome cloud request: url=%s data=%s", url, data)
         retries = 0
         if not timeout:
             timeout = 6
@@ -765,7 +835,9 @@ class DreameVacuumDreameHomeCloudProtocol:
             if response.status_code == 200:
                 self._fail_count = 0
                 self._connected = True
-                return json.loads(response.text)
+                result = json.loads(response.text)
+                _LOGGER.debug("DreameHome cloud request response: url=%s response=%s", url, result)
+                return result
             elif response.status_code == 401 and self._secondary_key:
                 _LOGGER.warning("Execute api call failed: Token Expired")
                 self.login()
@@ -1431,11 +1503,17 @@ class DreameVacuumMiHomeCloudProtocol:
         )
 
     def send(self, method, parameters, retry_count: int = 2, timeout=None) -> Any:
+        _LOGGER.debug(
+            "Xiaomi cloud RPC request: method=%s params=%s",
+            method,
+            _describe_miot_payload(method, parameters),
+        )
         api_response = self._api_call(
             f"v2/home/rpc/{self._did}", {"method": method, "params": parameters}, retry_count, timeout
         )
         if api_response is None or "result" not in api_response:
             return None
+        _LOGGER.debug("Xiaomi cloud RPC response: method=%s response=%s", method, api_response["result"])
         return api_response["result"]
 
     def get_device_property(self, key, limit=1, time_start=0, time_end=9999999999):
@@ -1445,6 +1523,14 @@ class DreameVacuumMiHomeCloudProtocol:
         return self.get_device_data(key, "event", limit, time_start, time_end)
 
     def get_device_data(self, key, type, limit=1, time_start=0, time_end=9999999999):
+        _LOGGER.debug(
+            "Xiaomi cloud device data request: type=%s key=%s limit=%s time_start=%s time_end=%s",
+            type,
+            key,
+            limit,
+            time_start,
+            time_end,
+        )
         api_response = self._api_call(
             "user/get_user_device_data",
             {
@@ -1460,6 +1546,7 @@ class DreameVacuumMiHomeCloudProtocol:
         if api_response is None or "result" not in api_response:
             return None
 
+        _LOGGER.debug("Xiaomi cloud device data response: type=%s key=%s response=%s", type, key, api_response["result"])
         return api_response["result"]
 
     def get_info(self, mac: str) -> Tuple[Optional[str], Optional[str]]:
@@ -1605,9 +1692,11 @@ class DreameVacuumMiHomeCloudProtocol:
             return device_list
 
     def get_batch_device_datas(self, props) -> Any:
+        _LOGGER.debug("Xiaomi cloud batch device data request: props=%s", props)
         api_response = self._api_call("device/batchdevicedatas", [{"did": self._did, "props": props}])
         if api_response is None or self._did not in api_response:
             return None
+        _LOGGER.debug("Xiaomi cloud batch device data response: response=%s", api_response[self._did])
         return api_response[self._did]
 
     def set_batch_device_datas(self, props) -> Any:
@@ -1617,6 +1706,7 @@ class DreameVacuumMiHomeCloudProtocol:
         return api_response["result"]
 
     def request(self, url: str, params: Dict[str, str], retry_count=2, timeout=None) -> Any:
+        _LOGGER.debug("Xiaomi cloud request: url=%s params=%s", url, params)
         retries = 0
         if not retry_count or retry_count < 0:
             retry_count = 0
@@ -1659,7 +1749,9 @@ class DreameVacuumMiHomeCloudProtocol:
                 self._fail_count = 0
                 self._connected = True
                 decoded = self.decrypt_rc4(self.signed_nonce(fields["_nonce"]), response.text)
-                return json.loads(decoded) if decoded else None
+                result = json.loads(decoded) if decoded else None
+                _LOGGER.debug("Xiaomi cloud request response: url=%s response=%s", url, result)
+                return result
             _LOGGER.warning("Execute api call failed with response: %s", response.text)
 
         if self._fail_count == 5:
@@ -1857,6 +1949,18 @@ class DreameVacuumProtocol:
         self._connected = False
 
     def send_async(self, callback, method, parameters: Any = None, retry_count: int = 2):
+        _LOGGER.debug(
+            "Protocol async request: transport=%s method=%s params=%s",
+            "cloud" if (self.prefer_cloud or not self.device) and self.device_cloud else "local",
+            method,
+            _describe_miot_payload(method, parameters),
+        )
+
+        def logged_callback(response):
+            _LOGGER.debug("Protocol async response: method=%s response=%s", method, response)
+            if callback:
+                callback(response)
+
         if (self.prefer_cloud or not self.device) and self.device_cloud:
             if not self.device_cloud.logged_in:
                 # Use different session for device cloud
@@ -1876,15 +1980,21 @@ class DreameVacuumProtocol:
                         self._connected = False
                     raise DeviceException("Unable to discover the device over cloud") from None
                 self._connected = True
-                callback(response)
+                logged_callback(response)
 
             self.device_cloud.send_async(cloud_callback, method, parameters=parameters, retry_count=retry_count)
             return
 
         if self.device:
-            self.device.send_async(callback, method, parameters=parameters, retry_count=retry_count)
+            self.device.send_async(logged_callback, method, parameters=parameters, retry_count=retry_count)
 
     def send(self, method, parameters: Any = None, retry_count: int = 2, timeout=None) -> Any:
+        _LOGGER.debug(
+            "Protocol request: transport=%s method=%s params=%s",
+            "cloud" if (self.prefer_cloud or not self.device) and self.device_cloud else "local",
+            method,
+            _describe_miot_payload(method, parameters),
+        )
         if (self.prefer_cloud or not self.device) and self.device_cloud:
             if not self.device_cloud.logged_in:
                 # Use different session for device cloud
@@ -1904,10 +2014,13 @@ class DreameVacuumProtocol:
                     self._connected = False
                 raise DeviceException("Unable to discover the device over cloud") from None
             self._connected = True
+            _LOGGER.debug("Protocol response: method=%s response=%s", method, response)
             return response
 
         if self.device:
-            return self.device.send(method, parameters=parameters, retry_count=retry_count)
+            response = self.device.send(method, parameters=parameters, retry_count=retry_count)
+            _LOGGER.debug("Protocol response: method=%s response=%s", method, response)
+            return response
 
     def get_properties(self, parameters: Any = None, retry_count: int = 1, timeout=None) -> Any:
         return self.send("get_properties", parameters=parameters, retry_count=retry_count, timeout=timeout)
@@ -1963,7 +2076,13 @@ class DreameVacuumProtocol:
         if parameters is None:
             parameters = []
 
-        _LOGGER.debug("Send Action Async: %s.%s %s", siid, aiid, parameters)
+        _LOGGER.debug(
+            "Send Action Async: %s.%s action=%s params=%s",
+            siid,
+            aiid,
+            _action_name(siid, aiid),
+            parameters,
+        )
         self.send_async(
             callback,
             "action",
@@ -1980,7 +2099,13 @@ class DreameVacuumProtocol:
         if parameters is None:
             parameters = []
 
-        _LOGGER.debug("Send Action: %s.%s %s", siid, aiid, parameters)
+        _LOGGER.debug(
+            "Send Action: %s.%s action=%s params=%s",
+            siid,
+            aiid,
+            _action_name(siid, aiid),
+            parameters,
+        )
         return self.send(
             "action",
             parameters={

@@ -41,6 +41,7 @@ from .const import (
     CONF_HIDDEN_MAP_OBJECTS,
     CONF_DONATED,
     CONF_VERSION,
+    CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE,
     MAP_OBJECTS,
     CONTENT_TYPE,
     NOTIFICATION_CLEANUP_COMPLETED,
@@ -167,6 +168,7 @@ class DreameVacuumDataUpdateCoordinator(DataUpdateCoordinator[DreameVacuumDevice
             entry.data.get(CONF_ACCOUNT_TYPE, "mi"),
             entry.data.get(CONF_DID),
             self._auth_key,
+            entry.options.get(CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE, True),
         )
 
         self._device.listen(self._dust_collection_changed, DreameVacuumProperty.DUST_COLLECTION)
@@ -483,19 +485,19 @@ class DreameVacuumDataUpdateCoordinator(DataUpdateCoordinator[DreameVacuumDevice
             if self._has_warning:
                 if f"{DOMAIN}_{self._device.mac}_{NOTIFICATION_ID_WARNING}" not in notifications:
                     if NOTIFICATION_ID_WARNING in self._notify:
-                        self._device.clear_warning()
+                        self._device.clear_warning(explicit_request=False)
                     self._has_warning = self._device.status.has_warning
 
             if self._low_water:
                 if f"{DOMAIN}_{self._device.mac}_{NOTIFICATION_ID_LOW_WATER}" not in notifications:
                     if NOTIFICATION_ID_WARNING in self._notify:
-                        self._device.clear_warning()
+                        self._device.clear_warning(explicit_request=False)
                     self._low_water = self._device.status.low_water
 
             if self._drainage_status:
                 if f"{DOMAIN}_{self._device.mac}_{NOTIFICATION_ID_DRAINAGE_STATUS}" not in notifications:
                     if NOTIFICATION_ID_WARNING in self._notify:
-                        self._device.clear_warning()
+                        self._device.clear_warning(explicit_request=False)
                     self._drainage_status = self._device.status.draining_complete
 
     def _fire_event(self, event_id, data) -> None:

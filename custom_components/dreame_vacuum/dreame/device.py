@@ -299,6 +299,7 @@ from .protocol import DreameVacuumProtocol
 from .map import DreameMapVacuumMapManager, DreameVacuumMapDecoder
 
 _LOGGER = logging.getLogger(__name__)
+MOVA_P10_PRO_ULTRA_MODEL = "mova.vacuum.r2491a"
 
 
 class DreameVacuumDevice:
@@ -320,6 +321,7 @@ class DreameVacuumDevice:
         account_type: str = "mi",
         device_id: str = None,
         auth_key: str = None,
+        mova_p10_pro_ultra_safe_mode: bool = True,
     ) -> None:
         # Used for easy filtering the device from cloud device list and generating unique ids
         self.info = None
@@ -366,6 +368,8 @@ class DreameVacuumDevice:
         self._dirty_ai_data: dict[DreameVacuumStrAIProperty | DreameVacuumAIProperty, Any] = None
         self._discard_timeout = 5
         self._restore_timeout = 15
+        self._mova_p10_pro_ultra_safe_mode_option = mova_p10_pro_ultra_safe_mode
+        self._mova_p10_pro_ultra_safe_mode = False
 
         self._name = name
         self.mac = mac
@@ -801,6 +805,11 @@ class DreameVacuumDevice:
         if not properties:
             properties = self._default_properties
 
+        _LOGGER.debug(
+            "Request properties: %s",
+            [prop.name if hasattr(prop, "name") else prop for prop in properties],
+        )
+
         property_list = []
         for prop in properties:
             if prop in self.property_mapping:
@@ -946,6 +955,10 @@ class DreameVacuumDevice:
         ## Latest generation vacuum app plugin uses this property to inform the device about app is visibile or not
         ## so that the device does not send unnecessary data to cloud but obviously we don't want that in Home Assistant
 
+        if self._mova_p10_pro_ultra_safe_mode:
+            _LOGGER.warning("MOVA P10 Pro Ultra safety mode suppressed keep-alive write and timer")
+            return
+
         if (
             self.get_property(DreameVacuumProperty.KEEP_ALIVE) == 0
             and self.status.state != DreameVacuumState.UPGRADING
@@ -1051,6 +1064,7 @@ class DreameVacuumDevice:
                     self.set_auto_switch_property(
                         DreameVacuumAutoSwitchProperty.CLEANING_ROUTE,
                         DreameVacuumCleaningRoute.STANDARD.value,
+                        explicit_request=False,
                     )
 
             if self.capability.auto_change_mop and (
@@ -1089,7 +1103,12 @@ class DreameVacuumDevice:
                                 and not self.status.cleangenius_cleaning
                             ):
                                 try:
-                                    self._update_cleaning_mode(DreameVacuumCleaningMode.SWEEPING.value)
+                                    if self._mova_p10_pro_ultra_safe_mode:
+                                        _LOGGER.warning(
+                                            "MOVA P10 Pro Ultra safety mode suppressed implicit cleaning mode update: SWEEPING"
+                                        )
+                                    else:
+                                        self._update_cleaning_mode(DreameVacuumCleaningMode.SWEEPING.value)
                                 except:
                                     pass
                     elif not self.capability.mop_pad_lifting:
@@ -1107,9 +1126,20 @@ class DreameVacuumDevice:
                                     self._previous_cleaning_mode is not None
                                     and self._previous_cleaning_mode is not DreameVacuumCleaningMode.SWEEPING
                                 ):
-                                    self._update_cleaning_mode(self._previous_cleaning_mode.value)
+                                    if self._mova_p10_pro_ultra_safe_mode:
+                                        _LOGGER.warning(
+                                            "MOVA P10 Pro Ultra safety mode suppressed implicit cleaning mode restore: %s",
+                                            self._previous_cleaning_mode,
+                                        )
+                                    else:
+                                        self._update_cleaning_mode(self._previous_cleaning_mode.value)
                                 else:
-                                    self._update_cleaning_mode(DreameVacuumCleaningMode.SWEEPING_AND_MOPPING.value)
+                                    if self._mova_p10_pro_ultra_safe_mode:
+                                        _LOGGER.warning(
+                                            "MOVA P10 Pro Ultra safety mode suppressed implicit cleaning mode update: SWEEPING_AND_MOPPING"
+                                        )
+                                    else:
+                                        self._update_cleaning_mode(DreameVacuumCleaningMode.SWEEPING_AND_MOPPING.value)
                             # Store current cleaning mode for future use when water tank is removed
                             self._previous_cleaning_mode = self.status.cleaning_mode
                 except:
@@ -1183,7 +1213,10 @@ class DreameVacuumDevice:
 
                     if self._previous_cleangenius is not None:
                         self.set_auto_switch_property(
-                            DreameVacuumAutoSwitchProperty.CLEANGENIUS, self._previous_cleangenius, False
+                            DreameVacuumAutoSwitchProperty.CLEANGENIUS,
+                            self._previous_cleangenius,
+                            False,
+                            explicit_request=False,
                         )
                         self._previous_cleangenius = None
 
@@ -1196,6 +1229,7 @@ class DreameVacuumDevice:
                         self.set_auto_switch_property(
                             DreameVacuumAutoSwitchProperty.CLEANING_ROUTE,
                             DreameVacuumCleaningRoute.STANDARD.value,
+                            explicit_request=False,
                         )
             else:
                 self.status.cleanup_started = not (
@@ -1342,7 +1376,10 @@ class DreameVacuumDevice:
 
                 if self._previous_cleangenius is not None:
                     self.set_auto_switch_property(
-                        DreameVacuumAutoSwitchProperty.CLEANGENIUS, self._previous_cleangenius, False
+                        DreameVacuumAutoSwitchProperty.CLEANGENIUS,
+                        self._previous_cleangenius,
+                        False,
+                        explicit_request=False,
                     )
                     self._previous_cleangenius = None
 
@@ -1355,6 +1392,7 @@ class DreameVacuumDevice:
                     self.set_auto_switch_property(
                         DreameVacuumAutoSwitchProperty.CLEANING_ROUTE,
                         DreameVacuumCleaningRoute.STANDARD.value,
+                        explicit_request=False,
                     )
 
                 did = DreameVacuumProperty.TASK_STATUS.value
@@ -2387,6 +2425,62 @@ class DreameVacuumDevice:
         if values and len(values) == 3:
             return ((((0 ^ values[2]) << 8) ^ values[1]) << 8) ^ values[0]
 
+    @property
+    def mova_p10_pro_ultra_safe_mode(self) -> bool:
+        return self._mova_p10_pro_ultra_safe_mode
+
+    def _set_mova_p10_pro_ultra_safe_mode(self) -> None:
+        enabled = bool(
+            self._mova_p10_pro_ultra_safe_mode_option
+            and self.info
+            and self.info.model == MOVA_P10_PRO_ULTRA_MODEL
+        )
+        if enabled != self._mova_p10_pro_ultra_safe_mode:
+            self._mova_p10_pro_ultra_safe_mode = enabled
+            if enabled:
+                _LOGGER.warning(
+                    "MOVA P10 Pro Ultra safety mode enabled: suppressing map updates, "
+                    "shortcut reloads, notification sync writes, cloud history sync, and implicit writes"
+                )
+
+    def _safe_update_properties(self) -> list[DreameVacuumProperty]:
+        return [
+            DreameVacuumProperty.CHARGING_STATUS,
+            DreameVacuumProperty.SELF_WASH_BASE_STATUS,
+            DreameVacuumProperty.AUTO_EMPTY_STATUS,
+            DreameVacuumProperty.DUST_BAG_DRYING_STATUS,
+            DreameVacuumProperty.STATE,
+            DreameVacuumProperty.STATUS,
+            DreameVacuumProperty.TASK_STATUS,
+            DreameVacuumProperty.TASK_TYPE,
+            DreameVacuumProperty.ERROR,
+            DreameVacuumProperty.FAULTS,
+            DreameVacuumProperty.BATTERY_LEVEL,
+            DreameVacuumProperty.WATER_TANK,
+            DreameVacuumProperty.MOP_IN_STATION,
+            DreameVacuumProperty.MOP_PAD_INSTALLED,
+            DreameVacuumProperty.LOW_WATER_WARNING,
+            DreameVacuumProperty.CLEANING_PAUSED,
+            DreameVacuumProperty.DRAINAGE_STATUS,
+            DreameVacuumProperty.CLEAN_WATER_TANK_STATUS,
+            DreameVacuumProperty.DIRTY_WATER_TANK_STATUS,
+            DreameVacuumProperty.DUST_BAG_STATUS,
+            DreameVacuumProperty.DETERGENT_STATUS,
+            DreameVacuumProperty.HOT_WATER_STATUS,
+            DreameVacuumProperty.STATION_DRAINAGE_STATUS,
+        ]
+
+    def _suppress_mova_implicit_call(self, operation: str, target: Any, explicit_request: bool) -> bool:
+        if not self._mova_p10_pro_ultra_safe_mode or explicit_request:
+            return False
+        name = target.name if hasattr(target, "name") else target
+        _LOGGER.warning(
+            "MOVA P10 Pro Ultra safety mode suppressed implicit %s: %s",
+            operation,
+            name,
+        )
+        return True
+
     def connect_device(self) -> None:
         """Connect to the device api."""
         _LOGGER.info("Connecting to device")
@@ -2400,17 +2494,25 @@ class DreameVacuumDevice:
                 self.info.model,
                 self.info.firmware_version,
             )
+            self._set_mova_p10_pro_ultra_safe_mode()
 
             self._last_settings_request = time.time()
             self._last_map_list_request = self._last_settings_request
             self._dirty_data = {}
             self._dirty_auto_switch_data = {}
             self._dirty_ai_data = {}
-            self._request_properties()
+            self._request_properties(
+                self._safe_update_properties() if self._mova_p10_pro_ultra_safe_mode else None
+            )
 
             self._last_update_failed = None
 
-            if self.device_connected and self._protocol.cloud is not None and (not self._ready or not self.available):
+            if (
+                self.device_connected
+                and self._protocol.cloud is not None
+                and (not self._ready or not self.available)
+                and not self._mova_p10_pro_ultra_safe_mode
+            ):
                 if self._map_manager:
                     self._map_manager.set_update_interval(self._map_update_interval)
                     self._map_manager.set_device_running(
@@ -2465,7 +2567,7 @@ class DreameVacuumDevice:
                     self._property_changed(False)
                 self._map_manager.schedule_update(-1)
             elif self._protocol.cloud.logged_in:
-                if self._protocol.connected:
+                if self._protocol.connected and not self._mova_p10_pro_ultra_safe_mode:
                     self._map_manager.schedule_update(5)
 
                 self.token, self.host = self._protocol.cloud.get_info(self.mac)
@@ -2875,6 +2977,7 @@ class DreameVacuumDevice:
             DreameVacuumProperty | DreameVacuumAutoSwitchProperty | DreameVacuumStrAIProperty | DreameVacuumAIProperty
         ),
         value: Any,
+        explicit_request: bool = True,
     ) -> bool:
         """Sets property value using the existing property mapping and notify listeners
         Property must be set on memory first and notify its listeners because device does not return new value immediately.
@@ -2882,10 +2985,13 @@ class DreameVacuumDevice:
         if value is None:
             return False
 
+        if self._suppress_mova_implicit_call("set_property", prop, explicit_request):
+            return False
+
         if isinstance(prop, DreameVacuumAutoSwitchProperty):
-            return self.set_auto_switch_property(prop, value)
+            return self.set_auto_switch_property(prop, value, explicit_request=explicit_request)
         if isinstance(prop, DreameVacuumStrAIProperty) or isinstance(prop, DreameVacuumAIProperty):
-            return self.set_ai_property(prop, value)
+            return self.set_ai_property(prop, value, explicit_request=explicit_request)
 
         self.schedule_update(10)
         current_value = self._update_property(prop, value, False)
@@ -2930,10 +3036,17 @@ class DreameVacuumDevice:
         self.schedule_update(1)
         return False
 
-    def set_properties(self, properties: dict) -> bool:
+    def set_properties(self, properties: dict, explicit_request: bool = True) -> bool:
         """Sets multiple properties at once using the existing property mapping and notify listeners"""
         if not properties:
             return True
+
+        if self._suppress_mova_implicit_call(
+            "set_properties",
+            ", ".join(prop.name if hasattr(prop, "name") else str(prop) for prop in properties),
+            explicit_request,
+        ):
+            return False
 
         self.schedule_update(10)
         values = []
@@ -3331,6 +3444,9 @@ class DreameVacuumDevice:
         """Trigger a map update.
         This function is used for requesting map data when a image request has been made to renderer
         """
+        if self._mova_p10_pro_ultra_safe_mode:
+            _LOGGER.warning("MOVA P10 Pro Ultra safety mode suppressed map update request")
+            return
 
         self._last_change = time.time()
         if self._map_manager:
@@ -3353,9 +3469,9 @@ class DreameVacuumDevice:
         if not self.device_connected:
             raise DeviceUpdateFailedException("Device cannot be reached") from None
 
-        properties = READ_ONLY_PROPERTIES.copy()
+        properties = self._safe_update_properties() if self._mova_p10_pro_ultra_safe_mode else READ_ONLY_PROPERTIES.copy()
 
-        if self.capability.backup_map:
+        if self.capability.backup_map and not self._mova_p10_pro_ultra_safe_mode:
             properties.append(DreameVacuumProperty.MAP_BACKUP_STATUS)
 
         now = time.time()
@@ -3363,7 +3479,7 @@ class DreameVacuumDevice:
             # Only changed when robot is active
             properties.extend([DreameVacuumProperty.CLEANED_AREA, DreameVacuumProperty.CLEANING_TIME])
 
-        if self._consumable_change:
+        if self._consumable_change and not self._mova_p10_pro_ultra_safe_mode:
             # Consumable properties
             properties.extend(CONSUMABLE_PROPERTIES)
 
@@ -3386,7 +3502,9 @@ class DreameVacuumDevice:
         if now - self._last_settings_request > 9.5:
             self._last_settings_request = now
 
-            if not self._consumable_change and self.status.washing:
+            if self._mova_p10_pro_ultra_safe_mode:
+                _LOGGER.debug("MOVA P10 Pro Ultra safety mode skipped READ_WRITE_PROPERTIES refresh")
+            elif not self._consumable_change and self.status.washing:
                 properties.extend(CONSUMABLE_PROPERTIES)
 
                 if not self.capability.disable_mop_consumable:
@@ -3397,14 +3515,21 @@ class DreameVacuumDevice:
                         ]
                     )
 
-            properties.extend(READ_WRITE_PROPERTIES)
+            if not self._mova_p10_pro_ultra_safe_mode:
+                properties.extend(READ_WRITE_PROPERTIES)
 
-        if self._map_manager and not self.status.running and now - self._last_map_list_request > 60:
+        if (
+            self._map_manager
+            and not self._mova_p10_pro_ultra_safe_mode
+            and not self.status.running
+            and now - self._last_map_list_request > 60
+        ):
             properties.extend([DreameVacuumProperty.MAP_LIST, DreameVacuumProperty.RECOVERY_MAP_LIST])
             self._last_map_list_request = time.time()
 
         if (
             self._protocol.dreame_cloud
+            and not self._mova_p10_pro_ultra_safe_mode
             and self.device_connected
             and self.cloud_connected
             and self.status.active
@@ -3510,7 +3635,7 @@ class DreameVacuumDevice:
         if self._consumable_change:
             self._consumable_change = False
 
-        if self._map_manager:
+        if self._map_manager and not self._mova_p10_pro_ultra_safe_mode:
             if (
                 not self.status.started
                 and not self.status.running
@@ -3527,9 +3652,9 @@ class DreameVacuumDevice:
         if self._draining_complete_time is not None and now - self._draining_complete_time > 600:
             self._draining_complete_time = None
             if self.status.draining_complete:
-                self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0)
+                self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0, explicit_request=False)
 
-        if self.cloud_connected:
+        if self.cloud_connected and not self._mova_p10_pro_ultra_safe_mode:
             self._request_cleaning_history()
 
     def call_stream_audio_action(self, property: DreameVacuumProperty, parameters=None):
@@ -3560,7 +3685,9 @@ class DreameVacuumDevice:
             ],
         )
 
-    def call_shortcut_action(self, command: str, parameters={}):
+    def call_shortcut_action(self, command: str, parameters={}, explicit_request: bool = True):
+        if self._suppress_mova_implicit_call("shortcut_action", command, explicit_request):
+            return None
         return self.call_action(
             DreameVacuumAction.SHORTCUTS,
             [
@@ -3576,7 +3703,9 @@ class DreameVacuumDevice:
             ],
         )
 
-    def call_shortcut_action_async(self, callback, command: str, parameters={}):
+    def call_shortcut_action_async(self, callback, command: str, parameters={}, explicit_request: bool = True):
+        if self._suppress_mova_implicit_call("shortcut_action_async", command, explicit_request):
+            return None
         mapping = self.action_mapping[DreameVacuumAction.SHORTCUTS]
         return self._protocol.action_async(
             callback,
@@ -3595,7 +3724,12 @@ class DreameVacuumDevice:
             ],
         )
 
-    def call_action(self, action: DreameVacuumAction, parameters: dict[str, Any] = None) -> dict[str, Any] | None:
+    def call_action(
+        self,
+        action: DreameVacuumAction,
+        parameters: dict[str, Any] = None,
+        explicit_request: bool = True,
+    ) -> dict[str, Any] | None:
         """Call an action."""
         if action not in self.action_mapping:
             raise InvalidActionException(f"Unable to find {action} in the action mapping")
@@ -3604,8 +3738,11 @@ class DreameVacuumDevice:
         if "siid" not in mapping or "aiid" not in mapping:
             raise InvalidActionException(f"{action} is not an action (missing siid or aiid)")
 
+        if self._suppress_mova_implicit_call("call_action", action, explicit_request):
+            return None
+
         if self.status.draining_complete:
-            self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0)
+            self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0, explicit_request=False)
 
         map_action = bool(action is DreameVacuumAction.REQUEST_MAP or action is DreameVacuumAction.UPDATE_MAP_DATA)
 
@@ -5396,6 +5533,10 @@ class DreameVacuumDevice:
                     return response
 
     def reload_shortcuts(self, sync=False) -> None:
+        if self._mova_p10_pro_ultra_safe_mode:
+            _LOGGER.warning("MOVA P10 Pro Ultra safety mode suppressed shortcut reload")
+            return
+
         shortcuts = self.get_property(DreameVacuumProperty.SHORTCUTS)
         if shortcuts is not None:
             if shortcuts and shortcuts != "":
@@ -5454,7 +5595,11 @@ class DreameVacuumDevice:
                                     ]
                                 else:
                                     tasks = None
-                                    response = self.call_shortcut_action("GET_COMMAND_BY_ID", {"id": id})
+                                    response = self.call_shortcut_action(
+                                        "GET_COMMAND_BY_ID",
+                                        {"id": id},
+                                        explicit_request=False,
+                                    )
                                     if response and "out" in response:
                                         data = response["out"]
                                         if data and len(data):
@@ -5571,9 +5716,9 @@ class DreameVacuumDevice:
 
                     try:
                         if sync:
-                            callback(self.call_shortcut_action("GET_COMMANDS"))
+                            callback(self.call_shortcut_action("GET_COMMANDS", explicit_request=False))
                         else:
-                            self.call_shortcut_action_async(callback, "GET_COMMANDS")
+                            self.call_shortcut_action_async(callback, "GET_COMMANDS", explicit_request=False)
                     except:
                         self.status.shortcuts = new_shortcuts
                         self._property_changed()
@@ -5584,10 +5729,10 @@ class DreameVacuumDevice:
                 self.status.shortcuts = {}
                 self._property_changed()
 
-    def clear_warning(self, error=None) -> dict[str, Any] | None:
+    def clear_warning(self, error=None, explicit_request: bool = True) -> dict[str, Any] | None:
         """Clear warning error code from the vacuum cleaner."""
         if self.status.draining_complete:
-            return self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0)
+            return self.set_property(DreameVacuumProperty.DRAINAGE_STATUS, 0, explicit_request=explicit_request)
         if self.status.has_warning:
             if error is not None:
                 value = error
@@ -5635,18 +5780,23 @@ class DreameVacuumDevice:
                             "value": f"[{error}]",
                         }
                     ],
+                    explicit_request=explicit_request,
                 )
                 if not response or response.get("code") != 0:
                     self.status.faults = current_faults
                     self._update_property(DreameVacuumProperty.ERROR, current_error, False)
                 return response
         else:
-            return self.clear_low_water_warning()
+            return self.clear_low_water_warning(explicit_request=explicit_request)
 
-    def clear_low_water_warning(self) -> dict[str, Any] | None:
+    def clear_low_water_warning(self, explicit_request: bool = True) -> dict[str, Any] | None:
         """Clear low water warning error code from the vacuum cleaner."""
         if self.status.low_water:
-            result = self.set_property(DreameVacuumProperty.LOW_WATER_WARNING, 1)
+            result = self.set_property(
+                DreameVacuumProperty.LOW_WATER_WARNING,
+                1,
+                explicit_request=explicit_request,
+            )
             if result:
                 self._request_properties([DreameVacuumProperty.LOW_WATER_WARNING])
             return result
@@ -5784,8 +5934,14 @@ class DreameVacuumDevice:
             )
 
     def set_ai_property(
-        self, prop: DreameVacuumStrAIProperty | DreameVacuumAIProperty, value: bool
+        self,
+        prop: DreameVacuumStrAIProperty | DreameVacuumAIProperty,
+        value: bool,
+        explicit_request: bool = True,
     ) -> dict[str, Any] | None:
+        if self._suppress_mova_implicit_call("set_ai_property", prop, explicit_request):
+            return None
+
         if self.capability.ai_detection:
             if prop.name not in self.ai_data:
                 raise InvalidActionException("Not supported")
@@ -5822,8 +5978,15 @@ class DreameVacuumDevice:
             return result
 
     def set_auto_switch_property(
-        self, prop: DreameVacuumAutoSwitchProperty, value: int, sync=True
+        self,
+        prop: DreameVacuumAutoSwitchProperty,
+        value: int,
+        sync=True,
+        explicit_request: bool = True,
     ) -> dict[str, Any] | None:
+        if self._suppress_mova_implicit_call("set_auto_switch_property", prop, explicit_request):
+            return None
+
         if self.capability.auto_switch_settings:
             if prop.name not in self.auto_switch_data:
                 raise InvalidActionException("Not supported")

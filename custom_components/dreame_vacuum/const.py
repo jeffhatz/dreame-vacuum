@@ -27,6 +27,9 @@ CONF_SQUARE: Final = "square"
 CONF_ACCOUNT_TYPE: Final = "account_type"
 CONF_DONATED: Final = "donated"
 CONF_VERSION: Final = "version"
+CONF_MODEL: Final = "model"
+CONF_MOVA_P10_PRO_ULTRA_SAFE_MODE: Final = "mova_p10_pro_ultra_safe_mode"
+MOVA_P10_PRO_ULTRA_MODEL: Final = "mova.vacuum.r2491a"
 
 CONTENT_TYPE: Final = "image/png"
 
