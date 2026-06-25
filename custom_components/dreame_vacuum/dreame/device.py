@@ -299,6 +299,7 @@ from .protocol import DreameVacuumProtocol
 from .map import DreameMapVacuumMapManager, DreameVacuumMapDecoder
 
 _LOGGER = logging.getLogger(__name__)
+MOVA_P10_PRO_ULTRA_MODEL = "mova.vacuum.r2491a"
 
 
 class DreameVacuumDevice:
@@ -945,6 +946,8 @@ class DreameVacuumDevice:
     def _keep_alive_changed(self, previous_keep_alive: Any = None) -> None:
         ## Latest generation vacuum app plugin uses this property to inform the device about app is visibile or not
         ## so that the device does not send unnecessary data to cloud but obviously we don't want that in Home Assistant
+        if self.info and self.info.model == MOVA_P10_PRO_ULTRA_MODEL:
+            return
 
         if (
             self.get_property(DreameVacuumProperty.KEEP_ALIVE) == 0
