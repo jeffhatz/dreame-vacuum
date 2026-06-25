@@ -10294,7 +10294,6 @@ class DreameVacuumDeviceStatus:
             (DreameVacuumProperty.STATUS, False),
             (DreameVacuumProperty.CLEANING_MODE, False),
             (DreameVacuumProperty.SUCTION_LEVEL, False),
-            (DreameVacuumProperty.TIGHT_MOPPING, True),
             (DreameVacuumProperty.ERROR, False),
             (DreameVacuumProperty.CLEANING_PAUSED, False),
             (DreameVacuumProperty.RELOCATION_STATUS, False),
@@ -10339,6 +10338,9 @@ class DreameVacuumDeviceStatus:
             (DreameVacuumProperty.BATTERY_CHARGE_LEVEL, False),
             (DreameVacuumProperty.RING_LIGHT_ALWAYS_ON, True),
         ]
+
+        if self._capability.tight_mopping:
+            properties.append((DreameVacuumProperty.TIGHT_MOPPING, True))
 
         if self._capability.auto_emptying:
             properties.append((DreameVacuumProperty.AUTO_DUST_COLLECTING, False))
@@ -10884,6 +10886,9 @@ class DreameVacuumDeviceStatus:
                 elif property is DreameVacuumProperty.SCHEDULE:
                     value = self.schedule
                 attributes[prop_name] = value
+
+        if self._capability.self_wash_base and not self._capability.tight_mopping:
+            attributes[PROPERTY_TO_NAME[DreameVacuumProperty.TIGHT_MOPPING.name][0]] = False
 
         if self._capability.dnd_task:
             attributes[ATTR_DND] = self.dnd_tasks if self.dnd_tasks else []
