@@ -10888,7 +10888,7 @@ class DreameVacuumDeviceStatus:
                 attributes[prop_name] = value
 
         if self._capability.self_wash_base and not self._capability.tight_mopping:
-            attributes[PROPERTY_TO_NAME[DreameVacuumProperty.TIGHT_MOPPING.name][0]] = False
+            attributes[DreameVacuumProperty.TIGHT_MOPPING.name.lower()] = False
 
         if self._capability.dnd_task:
             attributes[ATTR_DND] = self.dnd_tasks if self.dnd_tasks else []
